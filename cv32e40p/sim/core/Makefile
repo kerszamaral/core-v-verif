@@ -179,6 +179,18 @@ ALL_ASIM_FLAGS    = $(ASIM_FLAGS)
 ASIM_DEBUG_FLAGS  = -dbg
 ASIM_GUI_FLAGS    = -gui
 
+# xsim is the Xilinx Vivado simulator (https://xilinx.com/)
+XVLOG			  	= xvlog
+XELAB			  	= xelab
+XSIM			  	= xsim
+XSIM_CMP_FLAGS 		:= -sv
+XSIM_ELB_FLAGS 		:= -debug all -top tb_top -snapshot tb_top_snapshot
+XSIM_RESULTS	  	?= $(PWD)/xsim_results
+XSIM_SCRIPT_DIR   	= ../tools/xsim
+XSIM_SCRIPT       	= $(XSIM_SCRIPT_DIR)/xsim.tcl
+XSIM_UVM_ARGS 		= -L UVM
+XSIM_RUN_FLAGS      = -tclbatch ../$(XSIM_SCRIPT)
+
 # TB source files for the CV32E core
 TBSRC_HOME  := $(CORE_V_VERIF)/$(CV_CORE_LC)/tb
 TBSRC_TOP   := $(TBSRC_HOME)/core/tb_top.sv
@@ -697,4 +709,58 @@ distclean: clean
 	rm -rf riscv-fesvr riscv-isa-sim $(CV_CORE_PKG) work
 
 clean_all: distclean
-#endend
+
+
+###############################################################################
+# Xilinx Vivado xsim testbench compilation
+
+.PHONY: xsim-run-gui
+xsim-run-gui: .xsim-elab $(TEST_PROGRAM_PATH)/$(TEST)/$(TEST).hex
+	@echo "$(BANNER)"
+	@echo "* Running with Xilinx Vivado XSIM"
+	@echo "$(BANNER)"
+	@cd $(XSIM_RESULTS) && \
+	$(XSIM) \
+		tb_top_snapshot \
+		--gui -onfinish stop \
+		-testplusarg firmware=$(TEST_PROGRAM_PATH)/$(TEST)/$(TEST).hex
+
+.PHONY: xsim-run xsim-sanity xsim-hello-world
+xsim-run: xsim-test
+xsim-sanity: xsim-test
+xsim-hello-world: xsim-test
+
+.PHONY: xsim-test
+xsim-test: .xsim-elab $(TEST_PROGRAM_PATH)/$(TEST)/$(TEST).hex
+	@echo "$(BANNER)"
+	@echo "* Running with Xilinx Vivado XSIM"
+	@echo "$(BANNER)"
+	@cd $(XSIM_RESULTS) && \
+	$(XSIM) \
+		tb_top_snapshot \
+		$(XSIM_RUN_FLAGS) \
+		-testplusarg firmware=$(TEST_PROGRAM_PATH)/$(TEST)/$(TEST).hex
+
+.PHONY: xsim-elab
+.xsim-elab: .xsim-comp
+	@cd $(XSIM_RESULTS) && \
+	$(XELAB) \
+		$(XSIM_ELB_FLAGS)
+
+.PHONY: xsim-comp
+.xsim-comp: xsim_mk_results $(CV_CORE_PKG) $(RTLSRC_PKG) $(RTLSRC) $(TBSRC_PKG) $(TBSRC)
+	@cd $(XSIM_RESULTS) && \
+	$(XVLOG) \
+		$(XSIM_CMP_FLAGS) \
+		$(XSIM_UVM_ARGS) \
+		-f $(CV_CORE_MANIFEST).xsim \
+		$(TBSRC_PKG) \
+		$(TBSRC)
+
+.PHONY: xsim_mk_results
+xsim_mk_results:
+	$(MKDIR_P) $(XSIM_RESULTS)
+
+.PHONY: xsim-clean
+xsim-clean:
+	rm -rf $(XSIM_RESULTS)
